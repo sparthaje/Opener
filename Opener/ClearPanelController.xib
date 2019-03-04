@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="13771" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="13771"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <objects>
+        <customObject id="-2" userLabel="File's Owner" customClass="ClearPanelController" customModule="Opener" customModuleProvider="target">
+            <connections>
+                <outlet property="leftPane" destination="jdg-cN-PkY" id="7uA-a0-Tdl"/>
+                <outlet property="rightPane" destination="Yny-NR-IDS" id="Tkk-HO-lGK"/>
+                <outlet property="view" destination="Hz6-mo-xeY" id="0bl-1N-x8E"/>
+            </connections>
+        </customObject>
+        <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
+        <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+        <customView id="Hz6-mo-xeY">
+            <rect key="frame" x="0.0" y="0.0" width="480" height="360"/>
+            <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+            <subviews>
+                <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="Yny-NR-IDS">
+                    <rect key="frame" x="264" y="20" width="198" height="320"/>
+                    <constraints>
+                        <constraint firstAttribute="height" constant="320" id="XoW-ry-eaB"/>
+                        <constraint firstAttribute="width" constant="194" id="pCG-11-Dhc"/>
+                    </constraints>
+                    <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" id="76D-5Y-B1N">
+                        <font key="font" size="19" name="Avenir-Book"/>
+                        <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                        <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                    </textFieldCell>
+                </textField>
+                <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="jdg-cN-PkY">
+                    <rect key="frame" x="18" y="20" width="198" height="320"/>
+                    <constraints>
+                        <constraint firstAttribute="height" constant="320" id="J1D-2m-obe"/>
+                        <constraint firstAttribute="width" constant="194" id="gtC-qx-n0k"/>
+                    </constraints>
+                    <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" id="eUP-Bi-yAL">
+                        <font key="font" size="19" name="Avenir-Book"/>
+                        <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                        <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                    </textFieldCell>
+                </textField>
+            </subviews>
+            <constraints>
+                <constraint firstItem="jdg-cN-PkY" firstAttribute="leading" secondItem="Hz6-mo-xeY" secondAttribute="leading" constant="20" id="A9x-aN-n5u"/>
+                <constraint firstItem="jdg-cN-PkY" firstAttribute="top" secondItem="Hz6-mo-xeY" secondAttribute="top" constant="20" id="Psb-kh-fl8"/>
+                <constraint firstAttribute="trailing" secondItem="Yny-NR-IDS" secondAttribute="trailing" constant="20" id="acS-Uy-a7O"/>
+                <constraint firstItem="Yny-NR-IDS" firstAttribute="top" secondItem="Hz6-mo-xeY" secondAttribute="top" constant="20" id="rq8-IZ-QCw"/>
+            </constraints>
+            <point key="canvasLocation" x="139" y="212"/>
+        </customView>
+    </objects>
+</document>
