@@ -16,7 +16,7 @@ All the commands can be mapped in a file called `.opener_settings` in the home d
 1. Download the [app](https://github.com/sparthaje/Opener/releases/download/v1.0.0/Opener.zip) from the releases page
 2. Move the app into the `/Applications/` directory
 4. Open the app
-5. Go to Security > Privacy > Accebiliity and enable Opener.app
+5. Go to Security > Privacy > Accessibility and enable Opener.app
 6. Edit the configuration file (`⌘⇧2` followed by `9`)
 
 # Configuring .opener_settings
