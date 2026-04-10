@@ -10,8 +10,6 @@
 		EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAECDC24222A48BA0059100B /* AppDelegate.swift */; };
 		EAECDC27222A48BA0059100B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC26222A48BA0059100B /* Assets.xcassets */; };
 		EAECDC2A222A48BA0059100B /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC28222A48BA0059100B /* MainMenu.xib */; };
-		EAECDC4E222B4F090059100B /* ClearPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAECDC4C222B4F090059100B /* ClearPanelController.swift */; };
-		EAECDC4F222B4F090059100B /* ClearPanelController.xib in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC4D222B4F090059100B /* ClearPanelController.xib */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,8 +19,6 @@
 		EAECDC29222A48BA0059100B /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		EAECDC2B222A48BA0059100B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EAECDC2C222A48BA0059100B /* Opener.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Opener.entitlements; sourceTree = "<group>"; };
-		EAECDC4C222B4F090059100B /* ClearPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearPanelController.swift; sourceTree = "<group>"; };
-		EAECDC4D222B4F090059100B /* ClearPanelController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ClearPanelController.xib; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,8 +52,6 @@
 			isa = PBXGroup;
 			children = (
 				EAECDC24222A48BA0059100B /* AppDelegate.swift */,
-				EAECDC4C222B4F090059100B /* ClearPanelController.swift */,
-				EAECDC4D222B4F090059100B /* ClearPanelController.xib */,
 				EAECDC26222A48BA0059100B /* Assets.xcassets */,
 				EAECDC28222A48BA0059100B /* MainMenu.xib */,
 				EAECDC2B222A48BA0059100B /* Info.plist */,
@@ -127,7 +121,6 @@
 			files = (
 				EAECDC27222A48BA0059100B /* Assets.xcassets in Resources */,
 				EAECDC2A222A48BA0059100B /* MainMenu.xib in Resources */,
-				EAECDC4F222B4F090059100B /* ClearPanelController.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -138,7 +131,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EAECDC4E222B4F090059100B /* ClearPanelController.swift in Sources */,
 				EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -275,7 +267,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sparthaje.Opener;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -291,7 +283,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sparthaje.Opener;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
