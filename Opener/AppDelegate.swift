@@ -30,38 +30,53 @@ struct Settings {
         .maskCommand, .maskShift, .maskControl, .maskAlternate, .maskSecondaryFn
     ]
 
-    private static let modifierMap: [String: CGEventFlags] = [
+    private static let singleModifierMap: [String: CGEventFlags] = [
         "command": .maskCommand,
         "option": .maskAlternate,
         "control": .maskControl,
         "shift": .maskShift,
         "fn": .maskSecondaryFn,
-        "command-shift": [.maskCommand, .maskShift],
-        "command-control": [.maskCommand, .maskControl],
-        "option-shift": [.maskAlternate, .maskShift],
-        "option-command": [.maskAlternate, .maskCommand],
     ]
+
+    private static func parseModifiers(_ key: String) -> CGEventFlags? {
+        let parts = key.split(separator: "-").map(String.init)
+        var flags: CGEventFlags = []
+        for part in parts {
+            guard let flag = singleModifierMap[part] else { return nil }
+            flags.insert(flag)
+        }
+        return flags.isEmpty ? nil : flags
+    }
 
     let modifierFlags: CGEventFlags
     let hotkeyKeyCode: UInt16
-    let showPanel: Bool
+    let windowChooserModifierFlags: CGEventFlags?
+    let windowChooserKeyCode: UInt16?
     let keybinds: [String: String]
 
     func matchesHotkey(keyCode: UInt16, flags: CGEventFlags) -> Bool {
         return keyCode == hotkeyKeyCode && flags.intersection(Self.relevantModifiers) == modifierFlags
     }
 
+    func matchesWindowChooserHotkey(keyCode: UInt16, flags: CGEventFlags) -> Bool {
+        guard let wcFlags = windowChooserModifierFlags, let wcKeyCode = windowChooserKeyCode else {
+            return false
+        }
+        return keyCode == wcKeyCode && flags.intersection(Self.relevantModifiers) == wcFlags
+    }
+
     static func load() -> Settings {
         let path = settingsPath
 
         if !FileManager.default.fileExists(atPath: path) {
-            try? "command-shift:2\nfalse\n9:.opener_settings"
+            try? "command-shift:2\n9:.opener_settings"
                 .write(toFile: path, atomically: true, encoding: .utf8)
         }
 
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             return Settings(modifierFlags: [.maskCommand, .maskShift], hotkeyKeyCode: 19,
-                            showPanel: true, keybinds: [:])
+                            windowChooserModifierFlags: nil, windowChooserKeyCode: nil,
+                            keybinds: [:])
         }
 
         let lines = content.components(separatedBy: "\n")
@@ -69,28 +84,27 @@ struct Settings {
 
         var modFlags: CGEventFlags = [.maskCommand, .maskShift]
         var keyCode: UInt16 = 19
-        var showPanel = true
+        var wcModFlags: CGEventFlags? = nil
+        var wcKeyCode: UInt16? = nil
         var keybinds: [String: String] = [:]
-        var hotkeyParsed = false
-        var clearParsed = false
+        var hotkeysParsed = 0
 
         for line in lines {
-            if !clearParsed && (line == "true" || line == "false") {
-                showPanel = (line == "false")
-                clearParsed = true
-                continue
-            }
-
             guard let colonIdx = line.firstIndex(of: ":") else { continue }
             let key = String(line[line.startIndex..<colonIdx])
             let value = String(line[line.index(after: colonIdx)...])
 
-            if !hotkeyParsed && key.count > 1 {
-                if let flags = modifierMap[key], let kc = letterToKeyCode[value] {
-                    modFlags = flags
-                    keyCode = kc
+            if hotkeysParsed < 2 && key.count > 1 {
+                if let flags = parseModifiers(key), let kc = letterToKeyCode[value] {
+                    if hotkeysParsed == 0 {
+                        modFlags = flags
+                        keyCode = kc
+                    } else {
+                        wcModFlags = flags
+                        wcKeyCode = kc
+                    }
                 }
-                hotkeyParsed = true
+                hotkeysParsed += 1
                 continue
             }
 
@@ -100,7 +114,8 @@ struct Settings {
         }
 
         return Settings(modifierFlags: modFlags, hotkeyKeyCode: keyCode,
-                        showPanel: showPanel, keybinds: keybinds)
+                        windowChooserModifierFlags: wcModFlags, windowChooserKeyCode: wcKeyCode,
+                        keybinds: keybinds)
     }
 }
 
@@ -108,57 +123,9 @@ struct Settings {
 
 enum InputState {
     case idle
-    case listening            // single hotkey; waiting for letter or second hotkey
-    case windowSelecting      // double hotkey; waiting for letter to pick app
+    case listening            // single hotkey; waiting for letter
+    case windowSelecting      // window-chooser hotkey or 'ui' key; waiting for letter to pick app
     case appChosen(String)    // app picked; waiting for digit to pick window
-}
-
-// MARK: - Overlay Panel
-
-final class OverlayPanel: NSPanel {
-    init(keybinds: [String: String]) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-            styleMask: [.titled, .fullSizeContentView],
-            backing: .buffered, defer: false
-        )
-
-        level = .floating
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
-        standardWindowButton(.closeButton)?.isHidden = true
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
-
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 360))
-        let font = NSFont(name: "Avenir-Book", size: 19) ?? .systemFont(ofSize: 19)
-
-        let leftLabel = NSTextField(frame: NSRect(x: 20, y: 0, width: 220, height: 360))
-        let rightLabel = NSTextField(frame: NSRect(x: 240, y: 0, width: 220, height: 360))
-
-        for label in [leftLabel, rightLabel] {
-            label.isEditable = false
-            label.isBordered = false
-            label.drawsBackground = false
-            label.font = font
-        }
-
-        var leftLines: [String] = []
-        var rightLines: [String] = []
-        for (i, entry) in keybinds.sorted(by: { $0.key < $1.key }).enumerated() {
-            let name = (entry.value as NSString).lastPathComponent
-            let line = "\(entry.key)    \(name)"
-            if i % 2 == 0 { leftLines.append(line) } else { rightLines.append(line) }
-        }
-
-        leftLabel.stringValue = leftLines.joined(separator: "\n")
-        rightLabel.stringValue = rightLines.joined(separator: "\n")
-
-        container.addSubview(leftLabel)
-        container.addSubview(rightLabel)
-        contentView = container
-    }
 }
 
 // MARK: - Private API for matching AXUIElement to CGWindowID
@@ -184,8 +151,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = Settings.load()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var overlayPanel: OverlayPanel?
-    private var inputState: InputState = .idle
+    private var overlayPanel: WindowOverlayPanel?
+
+    private var inputState: InputState = .idle {
+        didSet {
+            switch inputState {
+            case .appChosen:
+                break // overlay shown explicitly at call site
+            default:
+                overlayPanel?.hideOverlay()
+            }
+        }
+    }
 
     // Stable window numbering: app path -> (CGWindowID -> assigned number)
     private var windowNumberMap: [String: [CGWindowID: Int]] = [:]
@@ -257,26 +234,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 enterListeningMode()
                 return nil
             }
+            if settings.matchesWindowChooserHotkey(keyCode: keyCode, flags: event.flags) {
+                inputState = .windowSelecting
+                return nil
+            }
             return Unmanaged.passUnretained(event)
 
         case .listening:
-            // Second hotkey press -> window-select mode
-            if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
-                inputState = .windowSelecting
-                dismissOverlay()
-                return nil
-            }
-            // Backspace: reload settings and dismiss
-            if keyCode == 51 {
-                settings = Settings.load()
-                resetToIdle()
-                return nil
-            }
-            // Mapped key: open and dismiss
+            // Mapped key: check for special values or open app
             if let letter = Settings.keyCodeToLetter[keyCode],
-               let path = settings.keybinds[letter] {
-                NSWorkspace.shared.open(URL(fileURLWithPath: path))
-                resetToIdle()
+               let value = settings.keybinds[letter] {
+                if value == "ui" {
+                    inputState = .windowSelecting
+                } else if value == "reload" {
+                    settings = Settings.load()
+                    resetToIdle()
+                } else {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: value))
+                    resetToIdle()
+                }
                 return nil
             }
             // Unmapped key: just dismiss
@@ -292,6 +268,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Mapped key: enumerate windows for that app
             if let letter = Settings.keyCodeToLetter[keyCode],
                let path = settings.keybinds[letter] {
+                // Skip special keywords in window-selecting mode
+                if path == "ui" || path == "reload" {
+                    return nil
+                }
                 let windows = enumerateWindows(forAppPath: path)
                 if windows.isEmpty {
                     // App not running or no windows: open the app
@@ -303,9 +283,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     activateWindow(number: windows[0].number)
                     resetToIdle()
                 } else {
-                    // Multiple windows: wait for digit
+                    // Multiple windows: show overlay, wait for digit
                     inputState = .appChosen(path)
                     currentWindowList = windows
+                    showOverlay(forApp: path)
                 }
                 return nil
             }
@@ -337,24 +318,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func enterListeningMode() {
         inputState = .listening
-        guard settings.showPanel else { return }
-
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let panel = OverlayPanel(keybinds: settings.keybinds)
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        panel.orderFrontRegardless()
-        overlayPanel = panel
     }
 
     private func resetToIdle() {
         inputState = .idle
-        dismissOverlay()
-    }
-
-    private func dismissOverlay() {
-        overlayPanel?.close()
-        overlayPanel = nil
     }
 
     // MARK: - Window Management
@@ -375,42 +342,85 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let runningApp = findRunningApp(forPath: appPath) else { return [] }
         let pid = runningApp.processIdentifier
 
-        guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return []
+        // Enumerate from AX windows — works reliably across all monitors
+        let appElement = AXUIElementCreateApplication(pid)
+        var axWindowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &axWindowsRef) == .success,
+              let axWindows = axWindowsRef as? [AXUIElement] else { return [] }
+
+        // Phase 1: Collect eligible windows (standard, non-minimized)
+        struct WindowInfo {
+            let windowID: CGWindowID
+            let title: String
+        }
+        var windows: [WindowInfo] = []
+
+        for axWindow in axWindows {
+            // Only include standard windows (skip popups, dialogs, panels, devtools)
+            var subroleRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef) == .success,
+               let subrole = subroleRef as? String, subrole != "AXStandardWindow" {
+                continue
+            }
+
+            // Skip minimized windows
+            var minimizedRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
+               let isMinimized = minimizedRef as? Bool, isMinimized {
+                continue
+            }
+
+            var windowID: CGWindowID = 0
+            guard _AXUIElementGetWindow(axWindow, &windowID) == .success else { continue }
+
+            var titleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef)
+            let title = (titleRef as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled"
+
+            windows.append(WindowInfo(windowID: windowID, title: title))
         }
 
-        let appWindows = windowInfoList.filter { info in
-            guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
-                  let layer = info[kCGWindowLayer as String] as? Int else { return false }
-            return ownerPID == pid && layer == 0
-        }
-
-        var mapping = windowNumberMap[appPath] ?? [:]
-        var currentIDs = Set<CGWindowID>()
+        // Phase 2: Assign numbers (1-based), ensuring no duplicates
+        let previousMapping = windowNumberMap[appPath] ?? [:]
+        let persistedOrder = WindowOrderPersistence.preferredOrder(forApp: appPath)
+        var usedNumbers = Set<Int>()
+        var newMapping: [CGWindowID: Int] = [:]
         var result: [(number: Int, title: String, windowID: CGWindowID, pid: pid_t)] = []
 
-        for info in appWindows {
-            guard let windowID = info[kCGWindowNumber as String] as? CGWindowID else { continue }
-            currentIDs.insert(windowID)
-            let title = info[kCGWindowName as String] as? String ?? "Untitled"
-
-            if let existing = mapping[windowID] {
-                result.append((number: existing, title: title, windowID: windowID, pid: pid))
-            } else {
-                let usedNumbers = Set(mapping.values)
-                var next = 1
-                while usedNumbers.contains(next) { next += 1 }
-                mapping[windowID] = next
-                result.append((number: next, title: title, windowID: windowID, pid: pid))
+        // Pass A: assign from previous session mapping (stable within session)
+        for win in windows {
+            if let num = previousMapping[win.windowID], num >= 1, !usedNumbers.contains(num) {
+                usedNumbers.insert(num)
+                newMapping[win.windowID] = num
             }
         }
 
-        // Prune closed windows
-        for id in mapping.keys where !currentIDs.contains(id) {
-            mapping.removeValue(forKey: id)
+        // Pass B: assign from persisted title order (stable across sessions)
+        var usedPersistedTitles = Set<String>()
+        for win in windows where newMapping[win.windowID] == nil {
+            if let num = persistedOrder[win.title], num >= 1,
+               !usedNumbers.contains(num), !usedPersistedTitles.contains(win.title) {
+                usedPersistedTitles.insert(win.title)
+                usedNumbers.insert(num)
+                newMapping[win.windowID] = num
+            }
         }
 
-        windowNumberMap[appPath] = mapping
+        // Pass C: assign fresh numbers to any remaining
+        for win in windows where newMapping[win.windowID] == nil {
+            var next = 1
+            while usedNumbers.contains(next) { next += 1 }
+            usedNumbers.insert(next)
+            newMapping[win.windowID] = next
+        }
+
+        // Build result
+        for win in windows {
+            let num = newMapping[win.windowID]!
+            result.append((number: num, title: win.title, windowID: win.windowID, pid: pid))
+        }
+
+        windowNumberMap[appPath] = newMapping
         result.sort { $0.number < $1.number }
         return result
     }
@@ -445,5 +455,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
         }
+    }
+
+    // MARK: - Overlay
+
+    private func showOverlay(forApp appPath: String) {
+        if overlayPanel == nil {
+            overlayPanel = WindowOverlayPanel()
+        }
+        overlayPanel?.showOverlay(windows: currentWindowList) { [weak self] newTitleOrder in
+            self?.applyReorder(newTitleOrder, forApp: appPath)
+        }
+    }
+
+    private func applyReorder(_ newTitleOrder: [String], forApp appPath: String) {
+        var titleToNumber: [String: Int] = [:]
+        for (idx, title) in newTitleOrder.enumerated() {
+            titleToNumber[title] = idx + 1
+        }
+
+        // Update currentWindowList numbers
+        for i in 0..<currentWindowList.count {
+            if let newNum = titleToNumber[currentWindowList[i].title] {
+                currentWindowList[i].number = newNum
+            }
+        }
+        currentWindowList.sort { $0.number < $1.number }
+
+        // Update in-memory windowNumberMap
+        var mapping: [CGWindowID: Int] = [:]
+        for entry in currentWindowList {
+            mapping[entry.windowID] = entry.number
+        }
+        windowNumberMap[appPath] = mapping
+
+        // Persist
+        WindowOrderPersistence.updateOrder(forApp: appPath, titleToNumber: titleToNumber)
     }
 }

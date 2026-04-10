@@ -9,16 +9,16 @@
 /* Begin PBXBuildFile section */
 		EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAECDC24222A48BA0059100B /* AppDelegate.swift */; };
 		EAECDC27222A48BA0059100B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC26222A48BA0059100B /* Assets.xcassets */; };
-		EAECDC2A222A48BA0059100B /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC28222A48BA0059100B /* MainMenu.xib */; };
+		EAECDC41222A48BA0059100B /* WindowOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAECDC40222A48BA0059100B /* WindowOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		EAECDC21222A48BA0059100B /* Opener.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Opener.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAECDC24222A48BA0059100B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		EAECDC26222A48BA0059100B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		EAECDC29222A48BA0059100B /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		EAECDC2B222A48BA0059100B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EAECDC2C222A48BA0059100B /* Opener.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Opener.entitlements; sourceTree = "<group>"; };
+		EAECDC40222A48BA0059100B /* WindowOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,8 +52,8 @@
 			isa = PBXGroup;
 			children = (
 				EAECDC24222A48BA0059100B /* AppDelegate.swift */,
+				EAECDC40222A48BA0059100B /* WindowOverlay.swift */,
 				EAECDC26222A48BA0059100B /* Assets.xcassets */,
-				EAECDC28222A48BA0059100B /* MainMenu.xib */,
 				EAECDC2B222A48BA0059100B /* Info.plist */,
 				EAECDC2C222A48BA0059100B /* Opener.entitlements */,
 			);
@@ -102,7 +102,6 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
-				Base,
 			);
 			mainGroup = EAECDC18222A48BA0059100B;
 			productRefGroup = EAECDC22222A48BA0059100B /* Products */;
@@ -120,7 +119,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				EAECDC27222A48BA0059100B /* Assets.xcassets in Resources */,
-				EAECDC2A222A48BA0059100B /* MainMenu.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,21 +130,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */,
+				EAECDC41222A48BA0059100B /* WindowOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-		EAECDC28222A48BA0059100B /* MainMenu.xib */ = {
-			isa = PBXVariantGroup;
-			children = (
-				EAECDC29222A48BA0059100B /* Base */,
-			);
-			name = MainMenu.xib;
-			sourceTree = "<group>";
-		};
-/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		EAECDC2D222A48BA0059100B /* Debug */ = {
