@@ -104,15 +104,6 @@ struct Settings {
     }
 }
 
-// MARK: - Input State
-
-enum InputState {
-    case idle
-    case listening            // single hotkey; waiting for letter or second hotkey
-    case windowSelecting      // double hotkey; waiting for letter to pick app
-    case appChosen(String)    // app picked; waiting for digit to pick window
-}
-
 // MARK: - Overlay Panel
 
 final class OverlayPanel: NSPanel {
@@ -161,11 +152,6 @@ final class OverlayPanel: NSPanel {
     }
 }
 
-// MARK: - Private API for matching AXUIElement to CGWindowID
-
-@_silgen_name("_AXUIElementGetWindow")
-func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
-
 // MARK: - Event Tap Callback
 
 private func eventTapCallback(
@@ -185,11 +171,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var overlayPanel: OverlayPanel?
-    private var inputState: InputState = .idle
-
-    // Stable window numbering: app path -> (CGWindowID -> assigned number)
-    private var windowNumberMap: [String: [CGWindowID: Int]] = [:]
-    private var currentWindowList: [(number: Int, title: String, windowID: CGWindowID, pid: pid_t)] = []
+    private var isListening = false
 
     static func main() {
         let app = NSApplication.shared
@@ -251,92 +233,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
-        switch inputState {
-        case .idle:
+        if !isListening {
             if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
                 enterListeningMode()
                 return nil
             }
-            return Unmanaged.passUnretained(event)
-
-        case .listening:
-            // Second hotkey press -> window-select mode
-            if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
-                inputState = .windowSelecting
-                dismissOverlay()
-                return nil
-            }
-            // Backspace: reload settings and dismiss
-            if keyCode == 51 {
-                settings = Settings.load()
-                resetToIdle()
-                return nil
-            }
-            // Mapped key: open and dismiss
-            if let letter = Settings.keyCodeToLetter[keyCode],
-               let path = settings.keybinds[letter] {
-                NSWorkspace.shared.open(URL(fileURLWithPath: path))
-                resetToIdle()
-                return nil
-            }
-            // Unmapped key: just dismiss
-            resetToIdle()
-            return Unmanaged.passUnretained(event)
-
-        case .windowSelecting:
-            // Backspace: go back to listening
-            if keyCode == 51 {
-                enterListeningMode()
-                return nil
-            }
-            // Mapped key: enumerate windows for that app
-            if let letter = Settings.keyCodeToLetter[keyCode],
-               let path = settings.keybinds[letter] {
-                let windows = enumerateWindows(forAppPath: path)
-                if windows.isEmpty {
-                    // App not running or no windows: open the app
-                    NSWorkspace.shared.open(URL(fileURLWithPath: path))
-                    resetToIdle()
-                } else if windows.count == 1 {
-                    // Single window: activate directly
-                    currentWindowList = windows
-                    activateWindow(number: windows[0].number)
-                    resetToIdle()
-                } else {
-                    // Multiple windows: wait for digit
-                    inputState = .appChosen(path)
-                    currentWindowList = windows
-                }
-                return nil
-            }
-            // Unmapped key: dismiss
-            resetToIdle()
-            return Unmanaged.passUnretained(event)
-
-        case .appChosen(_):
-            // Backspace: go back to window selecting
-            if keyCode == 51 {
-                inputState = .windowSelecting
-                return nil
-            }
-            // Digit 1-9: activate that window
-            if let digit = Settings.keyCodeToLetter[keyCode],
-               let number = Int(digit),
-               number >= 1, number <= 9 {
-                activateWindow(number: number)
-                resetToIdle()
-                return nil
-            }
-            // Unmapped key: dismiss
-            resetToIdle()
             return Unmanaged.passUnretained(event)
         }
+
+        // Backspace: reload settings and dismiss
+        if keyCode == 51 {
+            settings = Settings.load()
+            exitListeningMode()
+            return nil
+        }
+
+        // Mapped key: open and dismiss
+        if let letter = Settings.keyCodeToLetter[keyCode],
+           let path = settings.keybinds[letter] {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            exitListeningMode()
+            return nil
+        }
+
+        // Unmapped key: just dismiss
+        exitListeningMode()
+        return Unmanaged.passUnretained(event)
     }
 
-    // MARK: - State Helpers
-
     private func enterListeningMode() {
-        inputState = .listening
+        isListening = true
         guard settings.showPanel else { return }
 
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -347,103 +273,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = panel
     }
 
-    private func resetToIdle() {
-        inputState = .idle
-        dismissOverlay()
-    }
-
-    private func dismissOverlay() {
+    private func exitListeningMode() {
+        isListening = false
         overlayPanel?.close()
         overlayPanel = nil
-    }
-
-    // MARK: - Window Management
-
-    private func findRunningApp(forPath appPath: String) -> NSRunningApplication? {
-        let appURL = URL(fileURLWithPath: appPath)
-        if let match = NSWorkspace.shared.runningApplications.first(where: { $0.bundleURL == appURL }) {
-            return match
-        }
-        if let bundle = Bundle(url: appURL),
-           let bundleID = bundle.bundleIdentifier {
-            return NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleID })
-        }
-        return nil
-    }
-
-    private func enumerateWindows(forAppPath appPath: String) -> [(number: Int, title: String, windowID: CGWindowID, pid: pid_t)] {
-        guard let runningApp = findRunningApp(forPath: appPath) else { return [] }
-        let pid = runningApp.processIdentifier
-
-        guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return []
-        }
-
-        let appWindows = windowInfoList.filter { info in
-            guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
-                  let layer = info[kCGWindowLayer as String] as? Int else { return false }
-            return ownerPID == pid && layer == 0
-        }
-
-        var mapping = windowNumberMap[appPath] ?? [:]
-        var currentIDs = Set<CGWindowID>()
-        var result: [(number: Int, title: String, windowID: CGWindowID, pid: pid_t)] = []
-
-        for info in appWindows {
-            guard let windowID = info[kCGWindowNumber as String] as? CGWindowID else { continue }
-            currentIDs.insert(windowID)
-            let title = info[kCGWindowName as String] as? String ?? "Untitled"
-
-            if let existing = mapping[windowID] {
-                result.append((number: existing, title: title, windowID: windowID, pid: pid))
-            } else {
-                let usedNumbers = Set(mapping.values)
-                var next = 1
-                while usedNumbers.contains(next) { next += 1 }
-                mapping[windowID] = next
-                result.append((number: next, title: title, windowID: windowID, pid: pid))
-            }
-        }
-
-        // Prune closed windows
-        for id in mapping.keys where !currentIDs.contains(id) {
-            mapping.removeValue(forKey: id)
-        }
-
-        windowNumberMap[appPath] = mapping
-        result.sort { $0.number < $1.number }
-        return result
-    }
-
-    private func activateWindow(number: Int) {
-        guard let entry = currentWindowList.first(where: { $0.number == number }) else { return }
-
-        let appElement = AXUIElementCreateApplication(entry.pid)
-
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let axWindows = windowsRef as? [AXUIElement] else { return }
-
-        // Match by CGWindowID via private API
-        for axWindow in axWindows {
-            var windowID: CGWindowID = 0
-            if _AXUIElementGetWindow(axWindow, &windowID) == .success,
-               windowID == entry.windowID {
-                AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-                NSRunningApplication(processIdentifier: entry.pid)?.activate(options: [])
-                return
-            }
-        }
-
-        // Fallback: match by title
-        for axWindow in axWindows {
-            var titleRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef)
-            if let axTitle = titleRef as? String, axTitle == entry.title {
-                AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-                NSRunningApplication(processIdentifier: entry.pid)?.activate(options: [])
-                return
-            }
-        }
     }
 }
