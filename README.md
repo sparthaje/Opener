@@ -9,7 +9,7 @@ Opener is a customizable application/file opener utility for macOS. With it, you
 -
 
 ![Video Demonstration](https://raw.githubusercontent.com/sparthaje/Opener/master/Examples/example.gif)
-Note: The pop-up window can be disabled in the settings file
+Note: the pop-up window shown in the GIF has been removed — Opener now listens silently.
 
 -
 All the commands can be mapped in a file called `.opener_settings` in the home directory. The first line in this file defines the hot key for the app. The following lines define what application/file to open following the hot key.
@@ -33,11 +33,7 @@ The first line is `command-shift:2` by default. This defines the hot key that ac
 
 ---
 
-The second line should just be a boolean: `true` or `false`. If it is `true`, no window pops up to indicate when Opener is listening for an input. If it is `false`, whenever the hot key is called and Opener starts to listen for an input, a window with possible inputs will pop up, as seen in the GIF above. 
-
----
-
-The third line is `9:.opener_settings` by default. Only change the key value before the colon. This key value defines what key opens the settings file to edit it. All the modifiers and keys are listed at the bottom of the README.md.
+`9:.opener_settings` is the default binding for opening the settings file itself. Only change the key value before the colon. All the modifiers and keys are listed at the bottom of the README.md.
 
 ---
 
@@ -47,6 +43,33 @@ The following lines define what key will map to which application. The general f
 	p:/Applications/PyCharm CE.app
 	t:/Applications/iTerm.app
 	3:/System/Library/CoreServices/Finder.app
+
+---
+
+## Switching Mission Control spaces
+
+A binding can also jump to a specific Mission Control space on a specific monitor. Format:
+
+	letter:space:<displayUUID>:<index0Based>
+
+Example:
+
+	1:space:51CD4EB6-A648-4F66-87AD-F48E592DD496:0
+	2:space:51CD4EB6-A648-4F66-87AD-F48E592DD496:1
+
+The space-switching engine is vendored from [knollet/InstantSpaceSwitcher](https://github.com/knollet/InstantSpaceSwitcher) (sources under `Opener/ISS/`). It posts synthetic Dock-swipe `CGEvent`s to jump directly to the target space with no slide animation. The standalone tool always operates on the display under the cursor; Opener wraps it so a binding can name a specific display by UUID, briefly warping the cursor to that display while the gesture is posted.
+
+## Per-monitor sections
+
+Because the same hotkey often means different things on different setups (laptop alone vs. laptop + external display vs. dock), bindings can be scoped to a **monitor configuration** — the sorted, `+`-joined list of all attached displays' UUIDs. Sections look like:
+
+	[monitor:<configID>]
+	1:space:<displayUUID>:0
+	2:space:<displayUUID>:1
+
+Bindings inside a section apply only when the current configuration matches; they shadow globals for the same letter. The first time Opener boots into a configuration it has not seen, it appends a commented template section to `.opener_settings` — uncomment lines to enable. Plugging or unplugging a display does the same thing live (no restart required).
+
+To find a display's UUID, attach the monitor and look at the auto-generated `[monitor:...]` header.
 
 ---
 
@@ -70,3 +93,5 @@ Available Keys (case-sensitive):
 
 	a b c d e f g h i j k l m n o p q r s t u v w x y z
 	1 2 3 4 5 6 7 8 9 0 ; .
+
+Numeric keys also dispatch from the numpad — pressing numpad `5` resolves to letter `5`.

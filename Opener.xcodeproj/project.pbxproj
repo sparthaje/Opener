@@ -10,6 +10,9 @@
 		EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAECDC24222A48BA0059100B /* AppDelegate.swift */; };
 		EAECDC27222A48BA0059100B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC26222A48BA0059100B /* Assets.xcassets */; };
 		EAECDC2A222A48BA0059100B /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = EAECDC28222A48BA0059100B /* MainMenu.xib */; };
+		AAAAAA02000000000000ABCD /* MonitorConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAAAA01000000000000ABCD /* MonitorConfig.swift */; };
+		AAAAAA04000000000000ABCD /* ISS.c in Sources */ = {isa = PBXBuildFile; fileRef = AAAAAA03000000000000ABCD /* ISS.c */; };
+		AAAAAA0A000000000000ABCD /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAAAA09000000000000ABCD /* IOKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +22,11 @@
 		EAECDC29222A48BA0059100B /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		EAECDC2B222A48BA0059100B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EAECDC2C222A48BA0059100B /* Opener.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Opener.entitlements; sourceTree = "<group>"; };
+		AAAAAA01000000000000ABCD /* MonitorConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorConfig.swift; sourceTree = "<group>"; };
+		AAAAAA03000000000000ABCD /* ISS.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ISS.c; sourceTree = "<group>"; };
+		AAAAAA05000000000000ABCD /* ISS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ISS.h; sourceTree = "<group>"; };
+		AAAAAA06000000000000ABCD /* Opener-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Opener-Bridging-Header.h"; sourceTree = "<group>"; };
+		AAAAAA09000000000000ABCD /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -26,6 +34,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAAAAA0A000000000000ABCD /* IOKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -37,6 +46,7 @@
 			children = (
 				EAECDC23222A48BA0059100B /* Opener */,
 				EAECDC22222A48BA0059100B /* Products */,
+				AAAAAA0B000000000000ABCD /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -52,12 +62,40 @@
 			isa = PBXGroup;
 			children = (
 				EAECDC24222A48BA0059100B /* AppDelegate.swift */,
+				AAAAAA01000000000000ABCD /* MonitorConfig.swift */,
+				AAAAAA07000000000000ABCD /* ISS */,
 				EAECDC26222A48BA0059100B /* Assets.xcassets */,
 				EAECDC28222A48BA0059100B /* MainMenu.xib */,
 				EAECDC2B222A48BA0059100B /* Info.plist */,
 				EAECDC2C222A48BA0059100B /* Opener.entitlements */,
 			);
 			path = Opener;
+			sourceTree = "<group>";
+		};
+		AAAAAA07000000000000ABCD /* ISS */ = {
+			isa = PBXGroup;
+			children = (
+				AAAAAA03000000000000ABCD /* ISS.c */,
+				AAAAAA06000000000000ABCD /* Opener-Bridging-Header.h */,
+				AAAAAA08000000000000ABCD /* include */,
+			);
+			path = ISS;
+			sourceTree = "<group>";
+		};
+		AAAAAA08000000000000ABCD /* include */ = {
+			isa = PBXGroup;
+			children = (
+				AAAAAA05000000000000ABCD /* ISS.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		AAAAAA0B000000000000ABCD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AAAAAA09000000000000ABCD /* IOKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -132,6 +170,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */,
+				AAAAAA02000000000000ABCD /* MonitorConfig.swift in Sources */,
+				AAAAAA04000000000000ABCD /* ISS.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -263,10 +303,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 679T2G5882;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Opener/ISS/include",
+				);
 				INFOPLIST_FILE = Opener/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sparthaje.Opener;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "Opener/ISS/Opener-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -279,10 +324,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 679T2G5882;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Opener/ISS/include",
+				);
 				INFOPLIST_FILE = Opener/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sparthaje.Opener;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "Opener/ISS/Opener-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

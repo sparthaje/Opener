@@ -12,3 +12,6 @@ DerivedData/
 # Swift Package Manager
 .build/
 Packages/
+
+# Upstream reference clone of InstantSpaceSwitcher (vendored into Opener/ISS/)
+example/

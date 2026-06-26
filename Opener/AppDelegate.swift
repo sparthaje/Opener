@@ -11,6 +11,11 @@ import Carbon
 
 // MARK: - Settings
 
+enum Action {
+    case open(path: String)
+    case switchSpace(displayUUID: String, index: UInt32)
+}
+
 struct Settings {
     static let settingsPath = (NSHomeDirectory() as NSString).appendingPathComponent(".opener_settings")
 
@@ -23,7 +28,14 @@ struct Settings {
     ]
 
     static let keyCodeToLetter: [UInt16: String] = {
-        Dictionary(uniqueKeysWithValues: letterToKeyCode.map { ($0.value, $0.key) })
+        var m = Dictionary(uniqueKeysWithValues: letterToKeyCode.map { ($0.value, $0.key) })
+        // Numpad digits dispatch the same as top-row digits.
+        let numpad: [UInt16: String] = [
+            82: "0", 83: "1", 84: "2", 85: "3", 86: "4",
+            87: "5", 88: "6", 89: "7", 91: "8", 92: "9",
+        ]
+        for (k, v) in numpad { m[k] = v }
+        return m
     }()
 
     private static let relevantModifiers: CGEventFlags = [
@@ -44,11 +56,28 @@ struct Settings {
 
     let modifierFlags: CGEventFlags
     let hotkeyKeyCode: UInt16
-    let showPanel: Bool
-    let keybinds: [String: String]
+    let globalBindings: [String: Action]
+    let monitorBindings: [String: [String: Action]]   // configID → letter → Action
 
     func matchesHotkey(keyCode: UInt16, flags: CGEventFlags) -> Bool {
         return keyCode == hotkeyKeyCode && flags.intersection(Self.relevantModifiers) == modifierFlags
+    }
+
+    func activeBindings(forConfigID configID: String) -> [String: Action] {
+        var merged = globalBindings
+        if let perMonitor = monitorBindings[configID] {
+            for (k, v) in perMonitor { merged[k] = v }
+        }
+        return merged
+    }
+
+    private static func parseAction(value: String) -> Action {
+        // "space:<uuid>:<index>"
+        let parts = value.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 3, parts[0] == "space", let idx = UInt32(parts[2]) {
+            return .switchSpace(displayUUID: parts[1], index: idx)
+        }
+        return .open(path: value)
     }
 
     static func load() -> Settings {
@@ -61,94 +90,95 @@ struct Settings {
 
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             return Settings(modifierFlags: [.maskCommand, .maskShift], hotkeyKeyCode: 19,
-                            showPanel: true, keybinds: [:])
+                            globalBindings: [:], monitorBindings: [:])
         }
 
         let lines = content.components(separatedBy: "\n")
-            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
 
         var modFlags: CGEventFlags = [.maskCommand, .maskShift]
         var keyCode: UInt16 = 19
-        var showPanel = true
-        var keybinds: [String: String] = [:]
+        var globalBindings: [String: Action] = [:]
+        var monitorBindings: [String: [String: Action]] = [:]
         var hotkeyParsed = false
-        var clearParsed = false
+        var currentSection: String? = nil
 
-        for line in lines {
-            if !clearParsed && (line == "true" || line == "false") {
-                showPanel = (line == "false")
-                clearParsed = true
-                continue
-            }
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
 
-            guard let colonIdx = line.firstIndex(of: ":") else { continue }
-            let key = String(line[line.startIndex..<colonIdx])
-            let value = String(line[line.index(after: colonIdx)...])
-
-            if !hotkeyParsed && key.count > 1 {
-                if let flags = modifierMap[key], let kc = letterToKeyCode[value] {
-                    modFlags = flags
-                    keyCode = kc
+            if line.hasPrefix("[monitor:") && line.hasSuffix("]") {
+                let inner = String(line.dropFirst("[monitor:".count).dropLast())
+                currentSection = inner
+                if monitorBindings[inner] == nil {
+                    monitorBindings[inner] = [:]
                 }
-                hotkeyParsed = true
                 continue
             }
 
-            if key.count == 1 {
-                keybinds[key] = (value == ".opener_settings") ? path : value
+            // Globals-only structural lines: hotkey only.
+            if currentSection == nil {
+                guard let colonIdx = line.firstIndex(of: ":") else { continue }
+                let key = String(line[line.startIndex..<colonIdx])
+                let value = String(line[line.index(after: colonIdx)...])
+
+                if !hotkeyParsed && key.count > 1 && Self.modifierMap[key] != nil {
+                    if let flags = modifierMap[key], let kc = letterToKeyCode[value] {
+                        modFlags = flags
+                        keyCode = kc
+                    }
+                    hotkeyParsed = true
+                    continue
+                }
+
+                if key.count == 1 {
+                    let resolved = (value == ".opener_settings") ? path : value
+                    globalBindings[key] = parseAction(value: resolved)
+                }
+            } else {
+                guard let colonIdx = line.firstIndex(of: ":") else { continue }
+                let key = String(line[line.startIndex..<colonIdx])
+                let value = String(line[line.index(after: colonIdx)...])
+                if key.count == 1 {
+                    monitorBindings[currentSection!]?[key] = parseAction(value: value)
+                }
             }
         }
 
         return Settings(modifierFlags: modFlags, hotkeyKeyCode: keyCode,
-                        showPanel: showPanel, keybinds: keybinds)
+                        globalBindings: globalBindings,
+                        monitorBindings: monitorBindings)
     }
-}
 
-// MARK: - Overlay Panel
+    /// If `.opener_settings` does not yet contain a `[monitor:<configID>]` section
+    /// for the current display layout, append a commented template.
+    static func ensureSectionExists(forConfigID configID: String, displayUUIDs: [String]) {
+        guard !configID.isEmpty else { return }
+        let path = settingsPath
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return }
 
-final class OverlayPanel: NSPanel {
-    init(keybinds: [String: String]) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-            styleMask: [.titled, .fullSizeContentView],
-            backing: .buffered, defer: false
-        )
+        let header = "[monitor:\(configID)]"
+        if content.contains(header) { return }
 
-        level = .floating
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
-        standardWindowButton(.closeButton)?.isHidden = true
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateStamp = formatter.string(from: Date())
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 360))
-        let font = NSFont(name: "Avenir-Book", size: 19) ?? .systemFont(ofSize: 19)
-
-        let leftLabel = NSTextField(frame: NSRect(x: 20, y: 0, width: 220, height: 360))
-        let rightLabel = NSTextField(frame: NSRect(x: 240, y: 0, width: 220, height: 360))
-
-        for label in [leftLabel, rightLabel] {
-            label.isEditable = false
-            label.isBordered = false
-            label.drawsBackground = false
-            label.font = font
+        var lines: [String] = []
+        if !content.hasSuffix("\n") { lines.append("") }
+        lines.append("")
+        lines.append(header)
+        lines.append("# Auto-generated \(dateStamp). Format: <letter>:space:<displayUUID>:<index0Based>")
+        for (i, uuid) in displayUUIDs.enumerated() {
+            lines.append("# Display \(i): \(uuid)")
         }
-
-        var leftLines: [String] = []
-        var rightLines: [String] = []
-        for (i, entry) in keybinds.sorted(by: { $0.key < $1.key }).enumerated() {
-            let name = (entry.value as NSString).lastPathComponent
-            let line = "\(entry.key)    \(name)"
-            if i % 2 == 0 { leftLines.append(line) } else { rightLines.append(line) }
+        for uuid in displayUUIDs {
+            lines.append("# 1:space:\(uuid):0")
+            lines.append("# 2:space:\(uuid):1")
         }
+        lines.append("")
 
-        leftLabel.stringValue = leftLines.joined(separator: "\n")
-        rightLabel.stringValue = rightLines.joined(separator: "\n")
-
-        container.addSubview(leftLabel)
-        container.addSubview(rightLabel)
-        contentView = container
+        let appended = content + lines.joined(separator: "\n")
+        try? appended.write(toFile: path, atomically: true, encoding: .utf8)
     }
 }
 
@@ -162,6 +192,14 @@ private func eventTapCallback(
     return delegate.handleEvent(type: type, event: event)
 }
 
+private func displayReconfigCallback(
+    display: CGDirectDisplayID, flags: CGDisplayChangeSummaryFlags, userInfo: UnsafeMutableRawPointer?
+) {
+    guard let userInfo = userInfo else { return }
+    let delegate = Unmanaged<AppDelegate>.fromOpaque(userInfo).takeUnretainedValue()
+    DispatchQueue.main.async { delegate.handleDisplayReconfiguration() }
+}
+
 // MARK: - App Delegate
 
 @main
@@ -170,8 +208,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = Settings.load()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var overlayPanel: OverlayPanel?
     private var isListening = false
+    private var issInitialized = false
 
     static func main() {
         let app = NSApplication.shared
@@ -184,11 +222,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(options) else { return }
+
+        if iss_init() { issInitialized = true }
+
+        ensureCurrentMonitorSection()
+        settings = Settings.load()
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        CGDisplayRegisterReconfigurationCallback(displayReconfigCallback, selfPtr)
+
         installEventTap()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         removeEventTap()
+        if issInitialized { iss_destroy() }
+    }
+
+    fileprivate func handleDisplayReconfiguration() {
+        ensureCurrentMonitorSection()
+        settings = Settings.load()
+    }
+
+    private func ensureCurrentMonitorSection() {
+        let configID = MonitorConfig.currentConfigID()
+        let uuids = MonitorConfig.currentDisplayUUIDs()
+        Settings.ensureSectionExists(forConfigID: configID, displayUUIDs: uuids)
     }
 
     private func installEventTap() {
@@ -248,10 +307,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Mapped key: open and dismiss
+        let active = settings.activeBindings(forConfigID: MonitorConfig.currentConfigID())
+
+        // Mapped key: dispatch and dismiss
         if let letter = Settings.keyCodeToLetter[keyCode],
-           let path = settings.keybinds[letter] {
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+           let action = active[letter] {
+            perform(action: action)
             exitListeningMode()
             return nil
         }
@@ -261,21 +322,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return Unmanaged.passUnretained(event)
     }
 
+    private func perform(action: Action) {
+        switch action {
+        case .open(let path):
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        case .switchSpace(let uuid, let index):
+            uuid.withCString { _ = iss_switch_to_space_on_display($0, UInt32(index)) }
+        }
+    }
+
     private func enterListeningMode() {
         isListening = true
-        guard settings.showPanel else { return }
-
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let panel = OverlayPanel(keybinds: settings.keybinds)
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        panel.orderFrontRegardless()
-        overlayPanel = panel
     }
 
     private func exitListeningMode() {
         isListening = false
-        overlayPanel?.close()
-        overlayPanel = nil
     }
 }
