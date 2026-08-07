@@ -14,6 +14,8 @@ import Carbon
 enum Action {
     case open(path: String)
     case switchSpace(displayUUID: String, index: UInt32)
+    case monitorSelect
+    case quit
 }
 
 struct Settings {
@@ -72,6 +74,12 @@ struct Settings {
     }
 
     private static func parseAction(value: String) -> Action {
+        if value == "monitor-select" {
+            return .monitorSelect
+        }
+        if value == "quit" {
+            return .quit
+        }
         // "space:<uuid>:<index>"
         let parts = value.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
         if parts.count == 3, parts[0] == "space", let idx = UInt32(parts[2]) {
@@ -182,6 +190,19 @@ struct Settings {
     }
 }
 
+// MARK: - Input State
+
+private struct PendingMonitorSelection {
+    let windowsByNumber: [Int: RoutableWindow]
+}
+
+private enum InputState {
+    case idle
+    case waitingForBinding
+    case waitingForApplication
+    case waitingForMonitor(PendingMonitorSelection)
+}
+
 // MARK: - Event Tap Callback
 
 private func eventTapCallback(
@@ -208,8 +229,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = Settings.load()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var isListening = false
     private var issInitialized = false
+    private var inputState: InputState = .idle
+    private var focusedDisplayUUID: String?
+    private let windowRouter = WindowRouter()
+    private let monitorOverlays = MonitorSelectionOverlayManager()
 
     static func main() {
         let app = NSApplication.shared
@@ -221,7 +245,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        guard AXIsProcessTrustedWithOptions(options) else { return }
+        guard AXIsProcessTrustedWithOptions(options) else {
+            // Accessibility permission is not usable until the next launch.
+            // Exit after macOS presents its first-run prompt so the user does
+            // not have to find and quit an inert background process manually.
+            DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
+            return
+        }
 
         if iss_init() { issInitialized = true }
 
@@ -240,6 +270,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     fileprivate func handleDisplayReconfiguration() {
+        resetToIdle()
         ensureCurrentMonitorSection()
         settings = Settings.load()
     }
@@ -292,50 +323,132 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
-        if !isListening {
+        switch inputState {
+        case .idle:
             if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
                 enterListeningMode()
                 return nil
             }
             return Unmanaged.passUnretained(event)
-        }
 
-        // Backspace: reload settings and dismiss
-        if keyCode == 51 {
-            settings = Settings.load()
-            exitListeningMode()
+        case .waitingForBinding:
+            if keyCode == 53 { // Escape
+                resetToIdle()
+                return nil
+            }
+            if keyCode == 51 { // Backspace reloads preferences in normal mode.
+                settings = Settings.load()
+                resetToIdle()
+                return nil
+            }
+
+            let active = settings.activeBindings(forConfigID: MonitorConfig.currentConfigID())
+            if let letter = Settings.keyCodeToLetter[keyCode],
+               let action = active[letter] {
+                if case .monitorSelect = action {
+                    inputState = .waitingForApplication
+                } else {
+                    perform(action: action)
+                    resetToIdle()
+                }
+                return nil
+            }
+
+            resetToIdle()
+            return Unmanaged.passUnretained(event)
+
+        case .waitingForApplication:
+            if keyCode == 51 || keyCode == 53 {
+                resetToIdle()
+                return nil
+            }
+
+            let active = settings.activeBindings(forConfigID: MonitorConfig.currentConfigID())
+            if let letter = Settings.keyCodeToLetter[keyCode],
+               let action = active[letter],
+               case .open(let path) = action,
+               WindowRouter.isApplicationBundle(path: path) {
+                beginMonitorSelection(forApplicationAt: path)
+                return nil
+            }
+
+            resetToIdle()
+            return nil
+
+        case .waitingForMonitor(let selection):
+            if keyCode == 51 || keyCode == 53 {
+                resetToIdle()
+                return nil
+            }
+
+            if let digit = Settings.keyCodeToLetter[keyCode],
+               let number = Int(digit),
+               (1...9).contains(number),
+               let window = selection.windowsByNumber[number] {
+                windowRouter.activate(window)
+            }
+            // A hidden number, zero, or any other key is a cancellation.
+            resetToIdle()
             return nil
         }
-
-        let active = settings.activeBindings(forConfigID: MonitorConfig.currentConfigID())
-
-        // Mapped key: dispatch and dismiss
-        if let letter = Settings.keyCodeToLetter[keyCode],
-           let action = active[letter] {
-            perform(action: action)
-            exitListeningMode()
-            return nil
-        }
-
-        // Unmapped key: just dismiss
-        exitListeningMode()
-        return Unmanaged.passUnretained(event)
     }
 
     private func perform(action: Action) {
         switch action {
         case .open(let path):
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            if !WindowRouter.isApplicationBundle(path: path)
+                || !windowRouter.routeApplication(at: path, focusedDisplayUUID: focusedDisplayUUID) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            }
         case .switchSpace(let uuid, let index):
             uuid.withCString { _ = iss_switch_to_space_on_display($0, UInt32(index)) }
+        case .monitorSelect:
+            break
+        case .quit:
+            NSApplication.shared.terminate(nil)
         }
     }
 
     private func enterListeningMode() {
-        isListening = true
+        focusedDisplayUUID = windowRouter.snapshotFocusedDisplayUUID()
+        inputState = .waitingForBinding
     }
 
-    private func exitListeningMode() {
-        isListening = false
+    private func beginMonitorSelection(forApplicationAt path: String) {
+        let windows = windowRouter.eligibleWindows(forApplicationAt: path)
+        guard !windows.isEmpty else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            resetToIdle()
+            return
+        }
+
+        // All displays are numbered before app availability is considered, so
+        // filtering never closes gaps in the labels.
+        let numberedDisplays = DisplayGeometry.numberedDisplays(focusedDisplayUUID: focusedDisplayUUID)
+        var windowsByNumber: [Int: RoutableWindow] = [:]
+        for numberedDisplay in numberedDisplays where (1...9).contains(numberedDisplay.number) {
+            if let frontmost = windows.first(where: {
+                $0.displayUUID == numberedDisplay.display.uuid
+            }) {
+                windowsByNumber[numberedDisplay.number] = frontmost
+            }
+        }
+
+        guard !windowsByNumber.isEmpty else {
+            resetToIdle()
+            return
+        }
+
+        inputState = .waitingForMonitor(PendingMonitorSelection(windowsByNumber: windowsByNumber))
+        monitorOverlays.show(
+            numberedDisplays: numberedDisplays,
+            eligibleDisplayUUIDs: Set(windows.map(\.displayUUID))
+        )
+    }
+
+    private func resetToIdle() {
+        inputState = .idle
+        focusedDisplayUUID = nil
+        monitorOverlays.dismiss()
     }
 }

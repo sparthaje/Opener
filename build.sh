@@ -50,10 +50,12 @@ swiftc -swift-version 5 -parse-as-library \
   -module-cache-path build/cache \
   -import-objc-header Opener/ISS/Opener-Bridging-Header.h \
   -IOpener/ISS/include \
-  -framework Cocoa -framework Carbon -framework ApplicationServices -framework IOKit \
+  -F/System/Library/PrivateFrameworks \
+  -framework Cocoa -framework Carbon -framework ApplicationServices -framework IOKit -framework SkyLight \
   -Lbuild/obj -lISS \
   -o build/Opener.app/Contents/MacOS/Opener \
-  Opener/AppDelegate.swift Opener/MonitorConfig.swift
+  Opener/AppDelegate.swift Opener/MonitorConfig.swift \
+  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift
 
 # 6. Launch
 open build/Opener.app

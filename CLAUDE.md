@@ -60,10 +60,12 @@ swiftc -swift-version 5 -parse-as-library \
   -module-cache-path build/cache \
   -import-objc-header Opener/ISS/Opener-Bridging-Header.h \
   -IOpener/ISS/include \
-  -framework Cocoa -framework Carbon -framework ApplicationServices -framework IOKit \
+  -F/System/Library/PrivateFrameworks \
+  -framework Cocoa -framework Carbon -framework ApplicationServices -framework IOKit -framework SkyLight \
   -Lbuild/obj -lISS \
   -o build/Opener.app/Contents/MacOS/Opener \
-  Opener/AppDelegate.swift Opener/MonitorConfig.swift
+  Opener/AppDelegate.swift Opener/MonitorConfig.swift \
+  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift
 
 # 6. Launch
 open build/Opener.app
@@ -73,8 +75,10 @@ Save it as `build.sh`, `chmod +x build.sh`, run `./build.sh`.
 
 ## Source layout
 
-- `Opener/AppDelegate.swift` — settings parsing, hotkey dispatch, overlay panel.
+- `Opener/AppDelegate.swift` — settings parsing and hotkey state dispatch.
 - `Opener/MonitorConfig.swift` — display-UUID + monitor-config helpers.
+- `Opener/WindowRouting.swift` — visible-window discovery, display assignment, and exact AX activation.
+- `Opener/MonitorSelectionOverlay.swift` — non-activating numbered monitor badges.
 - `Opener/ISS/` — vendored from `example/InstantSpaceSwitcher`. Provides instant Mission Control space switching by posting Dock-swipe `CGEvent`s.
   - `ISS.c`, `include/ISS.h` — C engine. Public Swift-callable surface includes `iss_init`, `iss_destroy`, `iss_switch_to_space_on_display(uuid, index)`.
   - `Opener-Bridging-Header.h` — Swift bridging import.
@@ -88,3 +92,5 @@ A monitor configuration is the sorted, `+`-joined list of all attached displays'
 Binding values:
 - `letter:/abs/path` — open via `NSWorkspace`.
 - `letter:space:<displayUUID>:<index0Based>` — switch to that space on that display via ISS. Cursor is briefly warped to the target display while the gesture posts.
+- `letter:monitor-select` — choose an application binding and then a numbered monitor.
+- `letter:quit` — terminate Opener.

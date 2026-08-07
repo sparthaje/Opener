@@ -13,6 +13,9 @@
 		AAAAAA02000000000000ABCD /* MonitorConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAAAA01000000000000ABCD /* MonitorConfig.swift */; };
 		AAAAAA04000000000000ABCD /* ISS.c in Sources */ = {isa = PBXBuildFile; fileRef = AAAAAA03000000000000ABCD /* ISS.c */; };
 		AAAAAA0A000000000000ABCD /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAAAA09000000000000ABCD /* IOKit.framework */; };
+		BBBBBB02000000000000ABCD /* WindowRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBBBB01000000000000ABCD /* WindowRouting.swift */; };
+		BBBBBB04000000000000ABCD /* MonitorSelectionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBBBB03000000000000ABCD /* MonitorSelectionOverlay.swift */; };
+		BBBBBB06000000000000ABCD /* SkyLight.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BBBBBB05000000000000ABCD /* SkyLight.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +30,9 @@
 		AAAAAA05000000000000ABCD /* ISS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ISS.h; sourceTree = "<group>"; };
 		AAAAAA06000000000000ABCD /* Opener-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Opener-Bridging-Header.h"; sourceTree = "<group>"; };
 		AAAAAA09000000000000ABCD /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		BBBBBB01000000000000ABCD /* WindowRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowRouting.swift; sourceTree = "<group>"; };
+		BBBBBB03000000000000ABCD /* MonitorSelectionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorSelectionOverlay.swift; sourceTree = "<group>"; };
+		BBBBBB05000000000000ABCD /* SkyLight.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SkyLight.framework; path = System/Library/PrivateFrameworks/SkyLight.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -35,6 +41,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AAAAAA0A000000000000ABCD /* IOKit.framework in Frameworks */,
+				BBBBBB06000000000000ABCD /* SkyLight.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -63,6 +70,8 @@
 			children = (
 				EAECDC24222A48BA0059100B /* AppDelegate.swift */,
 				AAAAAA01000000000000ABCD /* MonitorConfig.swift */,
+				BBBBBB01000000000000ABCD /* WindowRouting.swift */,
+				BBBBBB03000000000000ABCD /* MonitorSelectionOverlay.swift */,
 				AAAAAA07000000000000ABCD /* ISS */,
 				EAECDC26222A48BA0059100B /* Assets.xcassets */,
 				EAECDC28222A48BA0059100B /* MainMenu.xib */,
@@ -94,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				AAAAAA09000000000000ABCD /* IOKit.framework */,
+				BBBBBB05000000000000ABCD /* SkyLight.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -171,6 +181,8 @@
 			files = (
 				EAECDC25222A48BA0059100B /* AppDelegate.swift in Sources */,
 				AAAAAA02000000000000ABCD /* MonitorConfig.swift in Sources */,
+				BBBBBB02000000000000ABCD /* WindowRouting.swift in Sources */,
+				BBBBBB04000000000000ABCD /* MonitorSelectionOverlay.swift in Sources */,
 				AAAAAA04000000000000ABCD /* ISS.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

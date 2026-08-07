@@ -19,8 +19,8 @@ All the commands can be mapped in a file called `.opener_settings` in the home d
 2. Move the app into the `/Applications/` directory
 3. Open the app
 4. Go to Security > Privacy > Accessibility and enable Opener.app
-5. Quit the application (double click the Opener.app file and then `⌘Q`) 
-6. Re-open the application
+5. Opener automatically quits after showing the first Accessibility prompt
+6. Re-open the application after granting permission
 7. Edit the configuration file (`⌘⇧2` followed by `9`)
 
 # Configuring .opener_settings
@@ -43,6 +43,50 @@ The following lines define what key will map to which application. The general f
 	p:/Applications/PyCharm CE.app
 	t:/Applications/iTerm.app
 	3:/System/Library/CoreServices/Finder.app
+
+---
+
+## Application routing by monitor
+
+Application bindings prefer a window on the monitor that was focused when the Opener hotkey was pressed. Opener snapshots that monitor from the frontmost application's focused window (or from the pointer if no focused window is available), then routes in this order:
+
+1. The application's frontmost eligible window on the focused monitor.
+2. Its frontmost window on the only monitor where it has an eligible window.
+3. Its most-recently-used eligible window across all monitors, using the current macOS front-to-back window order.
+4. If no eligible window exists, launch/open the application normally.
+
+An eligible window is a standard, non-minimized window visible in the current Mission Control Space on its monitor. Dialogs, panels, minimized windows, and windows in other Spaces are ignored. A window spanning monitors belongs to the monitor containing the largest part of it; deterministic center and display-UUID tie-breakers handle exact splits.
+
+File bindings still open normally, and Opener does not move a newly launched application's window.
+
+## Selecting an application's monitor
+
+Bind the exact value `monitor-select` to any key, then follow it with an application binding and a monitor number:
+
+	command-shift:2
+
+	m:monitor-select
+	a:/Applications/App A.app
+	b:/Applications/App B.app
+	c:/Applications/App C.app
+
+For example, `⌘⇧2`, then `m`, then `b` displays centered number badges on all and only the monitors containing an eligible App B window. Pressing a displayed number raises App B's frontmost window on that monitor. Badges are keyboard-only and never take focus.
+
+Numbering is stable for the current invocation: the snapshotted focused monitor is `1`, and the remaining attached monitors are ordered left-to-right, then top-to-bottom, with display UUID as the final tie-breaker. All monitors are numbered before unavailable ones are hidden, so gaps remain. If App B exists on monitors 1 and 3 but not 2, the visible badges are `1` and `3`.
+
+Monitor selection supports the single number keys `1` through `9`, including their numpad equivalents. Escape, Backspace, an undisplayed number, or any other invalid key cancels selection. If the application has no eligible window, Opener dismisses selection and launches it normally. Disconnecting a display while badges are visible safely cancels the selection.
+
+Because `monitor-select` is an ordinary binding value, it can be rebound globally or inside a per-monitor section. Reload preferences with the Opener hotkey followed by Backspace; the new picker binding takes effect immediately.
+
+---
+
+## Quitting Opener
+
+Bind the exact value `quit` to any key to terminate Opener without using Activity Monitor or relaunching its app bundle:
+
+	q:quit
+
+For example, with that binding, press the Opener hotkey followed by `q`.
 
 ---
 
