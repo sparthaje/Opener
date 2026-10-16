@@ -71,15 +71,33 @@ static ISSSwitchCallback switchCallback = NULL;
 
 // Predictions dictionary: DisplayID (CFStringRef) -> Index (CFNumberRef)
 static CFMutableDictionaryRef predictionsDict = NULL;
+// Prediction timestamps: DisplayID (CFStringRef) -> CFAbsoluteTime (CFNumberRef)
+static CFMutableDictionaryRef predictionTimesDict = NULL;
+
+// Predictions only bridge the short window in which CGS still reports the
+// pre-switch space. Past that, live CGS data is authoritative; trusting an old
+// prediction after an external space change turns a valid switch into a no-op
+// or an out-of-bounds swipe.
+static const CFTimeInterval kPredictionLifetime = 1.0;
 
 static bool get_prediction(const char *displayID, unsigned int *outIndex) {
-    if (!displayID || !predictionsDict) return false;
-    
+    if (!displayID || !predictionsDict || !predictionTimesDict) return false;
+
     CFStringRef key = CFStringCreateWithCString(NULL, displayID, kCFStringEncodingUTF8);
     const void *value = CFDictionaryGetValue(predictionsDict, key);
+    const void *timeValue = CFDictionaryGetValue(predictionTimesDict, key);
+
+    CFAbsoluteTime setAt = 0;
+    bool fresh = timeValue
+        && CFNumberGetValue((CFNumberRef)timeValue, kCFNumberDoubleType, &setAt)
+        && CFAbsoluteTimeGetCurrent() - setAt < kPredictionLifetime;
+    if (!fresh) {
+        CFDictionaryRemoveValue(predictionsDict, key);
+        CFDictionaryRemoveValue(predictionTimesDict, key);
+    }
     CFRelease(key);
 
-    if (value) {
+    if (value && fresh) {
         CFNumberGetValue((CFNumberRef)value, kCFNumberIntType, outIndex);
         return true;
     }
@@ -87,13 +105,17 @@ static bool get_prediction(const char *displayID, unsigned int *outIndex) {
 }
 
 static void set_prediction(const char *displayID, unsigned int index) {
-    if (!displayID || !predictionsDict) return;
-    
+    if (!displayID || !predictionsDict || !predictionTimesDict) return;
+
     CFStringRef key = CFStringCreateWithCString(NULL, displayID, kCFStringEncodingUTF8);
     CFNumberRef val = CFNumberCreate(NULL, kCFNumberIntType, &index);
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    CFNumberRef time = CFNumberCreate(NULL, kCFNumberDoubleType, &now);
     CFDictionarySetValue(predictionsDict, key, val);
+    CFDictionarySetValue(predictionTimesDict, key, time);
     CFRelease(key);
     CFRelease(val);
+    CFRelease(time);
 }
 
 static bool extract_space_info_from_display(CFDictionaryRef displayDict,
@@ -541,6 +563,9 @@ bool iss_init(void) {
     if (!predictionsDict) {
         predictionsDict = CFDictionaryCreateMutable(NULL, 0, &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     }
+    if (!predictionTimesDict) {
+        predictionTimesDict = CFDictionaryCreateMutable(NULL, 0, &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    }
 
     CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp)
         | (1ULL << kCGSEventGesture) | (1ULL << kCGSEventDockControl);
@@ -568,6 +593,10 @@ void iss_destroy(void) {
     if (predictionsDict) {
         CFRelease(predictionsDict);
         predictionsDict = NULL;
+    }
+    if (predictionTimesDict) {
+        CFRelease(predictionTimesDict);
+        predictionTimesDict = NULL;
     }
     if (globalTap) {
         CGEventTapEnable(globalTap, false);
@@ -680,6 +709,9 @@ void iss_set_gesture_speed(double speed) {
 void iss_reset_predictions(void) {
     if (predictionsDict) {
         CFDictionaryRemoveAllValues(predictionsDict);
+    }
+    if (predictionTimesDict) {
+        CFDictionaryRemoveAllValues(predictionTimesDict);
     }
 }
 

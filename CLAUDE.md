@@ -43,7 +43,8 @@ EOF
 mkdir -p build/Opener.iconset
 cp Opener/Assets.xcassets/AppIcon.appiconset/icon_*.png build/Opener.iconset/ 2>/dev/null || true
 cp Opener/Assets.xcassets/AppIcon.appiconset/Icon1024.png build/Opener.iconset/icon_512x512@2x.png 2>/dev/null || true
-iconutil -c icns build/Opener.iconset -o build/Opener.app/Contents/Resources/AppIcon.icns 2>/dev/null || true
+iconutil -c icns build/Opener.iconset -o build/Opener.app/Contents/Resources/AppIcon.icns \
+  || echo "warning: iconutil failed; Opener.app will have no icon" >&2
 
 # 4. Compile ISS C target -> static archive
 mkdir -p build/obj
@@ -65,7 +66,8 @@ swiftc -swift-version 5 -parse-as-library \
   -Lbuild/obj -lISS \
   -o build/Opener.app/Contents/MacOS/Opener \
   Opener/AppDelegate.swift Opener/MonitorConfig.swift \
-  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift
+  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift \
+  Opener/WindowResizing.swift
 
 # 6. Launch
 open build/Opener.app
@@ -77,8 +79,9 @@ Save it as `build.sh`, `chmod +x build.sh`, run `./build.sh`.
 
 - `Opener/AppDelegate.swift` — settings parsing and hotkey state dispatch.
 - `Opener/MonitorConfig.swift` — display-UUID + monitor-config helpers.
-- `Opener/WindowRouting.swift` — visible-window discovery, display assignment, and exact AX activation.
+- `Opener/WindowRouting.swift` — visible-window discovery, display assignment, exact AX activation, and instant (ISS) routing to windows on hidden spaces.
 - `Opener/MonitorSelectionOverlay.swift` — non-activating numbered monitor badges.
+- `Opener/WindowResizing.swift` — ⌘⇧H / ⌘⇧L edge-aware horizontal resizing of the focused window.
 - `Opener/ISS/` — vendored from `example/InstantSpaceSwitcher`. Provides instant Mission Control space switching by posting Dock-swipe `CGEvent`s.
   - `ISS.c`, `include/ISS.h` — C engine. Public Swift-callable surface includes `iss_init`, `iss_destroy`, `iss_switch_to_space_on_display(uuid, index)`.
   - `Opener-Bridging-Header.h` — Swift bridging import.

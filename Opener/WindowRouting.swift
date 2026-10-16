@@ -32,6 +32,22 @@ private func SLPSPostEventRecordTo(
     _ bytes: UnsafeMutablePointer<UInt8>
 ) -> CGError
 
+@_silgen_name("CGSMainConnectionID")
+private func CGSMainConnectionID() -> Int32
+
+@_silgen_name("CGSCopyManagedDisplaySpaces")
+private func CGSCopyManagedDisplaySpaces(_ connection: Int32) -> Unmanaged<CFArray>?
+
+@_silgen_name("CGSCopySpacesForWindows")
+private func CGSCopySpacesForWindows(
+    _ connection: Int32,
+    _ mask: Int32,
+    _ windowIDs: CFArray
+) -> Unmanaged<CFArray>?
+
+@_silgen_name("CGSManagedDisplayGetCurrentSpace")
+private func CGSManagedDisplayGetCurrentSpace(_ connection: Int32, _ display: CFString) -> UInt64
+
 struct DisplayDescriptor {
     let id: CGDirectDisplayID
     let uuid: String
@@ -43,12 +59,79 @@ struct NumberedDisplay {
     let display: DisplayDescriptor
 }
 
+struct OffSpaceWindow {
+    let windowID: CGWindowID
+    let pid: pid_t
+    let space: SpaceLocation
+}
+
 struct RoutableWindow {
     let windowID: CGWindowID
     let pid: pid_t
     let displayUUID: String
     let frame: CGRect
     let zOrder: Int
+}
+
+/// Where a Mission Control space lives: the managed-display identifier CGS
+/// reports for it, the display UUID ISS switches on, and its zero-based
+/// position in that display's space list (the index ISS swipes to).
+struct SpaceLocation {
+    let spaceID: UInt64
+    let managedDisplayIdentifier: String
+    let displayUUID: String
+    let index: UInt32
+}
+
+enum Spaces {
+    // kCGSAllSpacesMask: current and other spaces.
+    private static let allSpacesMask: Int32 = 0x7
+
+    static func locations() -> [UInt64: SpaceLocation] {
+        let connection = CGSMainConnectionID()
+        guard let displays = CGSCopyManagedDisplaySpaces(connection)?.takeRetainedValue() as? [[String: Any]] else {
+            return [:]
+        }
+
+        var result: [UInt64: SpaceLocation] = [:]
+        for display in displays {
+            guard let identifier = display["Display Identifier"] as? String,
+                  let spaces = display["Spaces"] as? [[String: Any]] else {
+                continue
+            }
+            // Without "Displays have separate Spaces", CGS reports one shared
+            // "Main" display instead of a UUID.
+            let displayUUID = identifier == "Main"
+                ? DisplayGeometry.displayUUID(for: CGMainDisplayID()) ?? identifier
+                : identifier
+            for (index, space) in spaces.enumerated() {
+                guard let spaceID = (space["id64"] as? NSNumber)?.uint64Value else { continue }
+                result[spaceID] = SpaceLocation(
+                    spaceID: spaceID,
+                    managedDisplayIdentifier: identifier,
+                    displayUUID: displayUUID,
+                    index: UInt32(index)
+                )
+            }
+        }
+        return result
+    }
+
+    static func spaceID(forWindow windowID: CGWindowID) -> UInt64? {
+        let windowIDs = [NSNumber(value: windowID)] as CFArray
+        guard let spaces = CGSCopySpacesForWindows(CGSMainConnectionID(), allSpacesMask, windowIDs)?
+            .takeRetainedValue() as? [NSNumber] else {
+            return nil
+        }
+        return spaces.first?.uint64Value
+    }
+
+    static func isCurrent(_ location: SpaceLocation) -> Bool {
+        CGSManagedDisplayGetCurrentSpace(
+            CGSMainConnectionID(),
+            location.managedDisplayIdentifier as CFString
+        ) == location.spaceID
+    }
 }
 
 enum DisplayGeometry {
@@ -117,6 +200,15 @@ enum DisplayGeometry {
 }
 
 final class WindowRouter {
+    // Off-screen helper surfaces (tooltips, drag images, offscreen renderers)
+    // are layer-zero windows too; real document windows are never this small.
+    private static let minimumOffSpaceWindowSide: CGFloat = 100
+
+    // How long to wait for an instant space switch to land before giving up
+    // on window-exact activation.
+    private static let spaceSwitchTimeout: TimeInterval = 0.75
+    private static let spaceSwitchPollInterval: TimeInterval = 0.016
+
     func snapshotFocusedDisplayUUID() -> String? {
         let displays = DisplayGeometry.activeDisplays()
         guard !displays.isEmpty else { return nil }
@@ -209,6 +301,50 @@ final class WindowRouter {
         return result
     }
 
+    /// The application's frontmost window that lives on a space not currently
+    /// shown on any display. Accessibility only exposes windows on visible
+    /// spaces, so these are found through Core Graphics and CGS instead.
+    func offSpaceWindow(forApplicationAt path: String) -> OffSpaceWindow? {
+        guard let app = runningApplication(forPath: path) else { return nil }
+        let pid = app.processIdentifier
+
+        guard let cgWindows = CGWindowListCopyWindowInfo(
+            [.excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return nil
+        }
+
+        let locations = Spaces.locations()
+        for info in cgWindows {
+            guard numberValue(info[kCGWindowOwnerPID as String])?.int32Value == pid,
+                  numberValue(info[kCGWindowLayer as String])?.intValue == 0,
+                  numberValue(info[kCGWindowIsOnscreen as String])?.boolValue != true,
+                  let windowID = numberValue(info[kCGWindowNumber as String]).map({ CGWindowID($0.uint32Value) }),
+                  let frame = windowFrame(from: info),
+                  frame.width >= Self.minimumOffSpaceWindowSide,
+                  frame.height >= Self.minimumOffSpaceWindowSide,
+                  let spaceID = Spaces.spaceID(forWindow: windowID),
+                  let location = locations[spaceID],
+                  // Off-screen windows on a visible space are hidden or
+                  // minimized; switching spaces would not reveal them.
+                  !Spaces.isCurrent(location) else {
+                continue
+            }
+            return OffSpaceWindow(windowID: windowID, pid: pid, space: location)
+        }
+        return nil
+    }
+
+    /// Switches instantly to the window's space, then activates exactly that
+    /// window once the space is showing. Returns false if the switch could not
+    /// be posted, so the caller can fall back to a normal launch.
+    func routeToOffSpaceWindow(_ window: OffSpaceWindow, switchSpace: (SpaceLocation) -> Bool) -> Bool {
+        guard switchSpace(window.space) else { return false }
+        activateWhenSpaceIsCurrent(window, deadline: Date().addingTimeInterval(Self.spaceSwitchTimeout))
+        return true
+    }
+
     @discardableResult
     func routeApplication(at path: String, focusedDisplayUUID: String?) -> Bool {
         let windows = eligibleWindows(forApplicationAt: path)
@@ -236,17 +372,38 @@ final class WindowRouter {
     }
 
     func activate(_ window: RoutableWindow) {
-        guard let app = NSRunningApplication(processIdentifier: window.pid) else { return }
+        activate(windowID: window.windowID, pid: window.pid)
+    }
+
+    @discardableResult
+    private func activate(windowID: CGWindowID, pid: pid_t) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid) else { return false }
         if app.isHidden { app.unhide() }
 
-        let appElement = AXUIElementCreateApplication(window.pid)
-        guard let axWindow = axWindow(withID: window.windowID, in: appElement) else { return }
+        let appElement = AXUIElementCreateApplication(pid)
+        guard let axWindow = axWindow(withID: windowID, in: appElement) else { return false }
 
         // The window-specific activation and key-window events establish focus
         // without toggling process-level AX attributes, which can raise every
         // sibling window in applications such as Firefox.
-        activateExactWindow(window.windowID, of: app)
+        activateExactWindow(windowID, of: app)
         AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+        return true
+    }
+
+    private func activateWhenSpaceIsCurrent(_ window: OffSpaceWindow, deadline: Date) {
+        // The window only becomes visible to Accessibility once its space is
+        // showing, which lags the posted gesture by a few frames.
+        if Spaces.isCurrent(window.space), activate(windowID: window.windowID, pid: window.pid) {
+            return
+        }
+        guard Date() < deadline else {
+            NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.spaceSwitchPollInterval) { [weak self] in
+            self?.activateWhenSpaceIsCurrent(window, deadline: deadline)
+        }
     }
 
     static func isApplicationBundle(path: String) -> Bool {
@@ -271,6 +428,14 @@ final class WindowRouter {
     }
 
     private func systemFocusedWindowFrame() -> CGRect? {
+        Self.systemFocusedWindow().flatMap(Self.axFrame(of:))
+    }
+
+    private func focusedWindowFrame(in appElement: AXUIElement) -> CGRect? {
+        Self.focusedWindow(in: appElement).flatMap(Self.axFrame(of:))
+    }
+
+    static func systemFocusedWindow() -> AXUIElement? {
         let systemElement = AXUIElementCreateSystemWide()
         var applicationReference: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
@@ -281,20 +446,19 @@ final class WindowRouter {
         let applicationElement = applicationReference as! AXUIElement? else {
             return nil
         }
-        return focusedWindowFrame(in: applicationElement)
+        return focusedWindow(in: applicationElement)
     }
 
-    private func focusedWindowFrame(in appElement: AXUIElement) -> CGRect? {
+    private static func focusedWindow(in appElement: AXUIElement) -> AXUIElement? {
         var focusedReference: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             appElement,
             kAXFocusedWindowAttribute as CFString,
             &focusedReference
-        ) == .success,
-        let focusedWindow = focusedReference as! AXUIElement? else {
+        ) == .success else {
             return nil
         }
-        return axFrame(of: focusedWindow)
+        return focusedReference as! AXUIElement?
     }
 
     private func frontmostCGWindowFrame(for pid: pid_t) -> CGRect? {
@@ -315,7 +479,7 @@ final class WindowRouter {
         return nil
     }
 
-    private func axFrame(of window: AXUIElement) -> CGRect? {
+    static func axFrame(of window: AXUIElement) -> CGRect? {
         var positionReference: CFTypeRef?
         var sizeReference: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionReference) == .success,

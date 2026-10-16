@@ -56,6 +56,10 @@ struct Settings {
         "option-command": [.maskAlternate, .maskCommand],
     ]
 
+    // Fixed window-resize hotkeys: ⌘⇧H and ⌘⇧L.
+    private static let resizeModifiers: CGEventFlags = [.maskCommand, .maskShift]
+    private static let resizeKeyCodes: [UInt16: ResizeDirection] = [4: .left, 37: .right]
+
     let modifierFlags: CGEventFlags
     let hotkeyKeyCode: UInt16
     let globalBindings: [String: Action]
@@ -63,6 +67,11 @@ struct Settings {
 
     func matchesHotkey(keyCode: UInt16, flags: CGEventFlags) -> Bool {
         return keyCode == hotkeyKeyCode && flags.intersection(Self.relevantModifiers) == modifierFlags
+    }
+
+    static func resizeDirection(keyCode: UInt16, flags: CGEventFlags) -> ResizeDirection? {
+        guard flags.intersection(relevantModifiers) == resizeModifiers else { return nil }
+        return resizeKeyCodes[keyCode]
     }
 
     func activeBindings(forConfigID configID: String) -> [String: Action] {
@@ -233,6 +242,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var inputState: InputState = .idle
     private var focusedDisplayUUID: String?
     private let windowRouter = WindowRouter()
+    private let windowResizer = WindowResizer()
     private let monitorOverlays = MonitorSelectionOverlayManager()
 
     static func main() {
@@ -254,6 +264,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if iss_init() { issInitialized = true }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(activeSpaceDidChange),
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
 
         ensureCurrentMonitorSection()
         settings = Settings.load()
@@ -267,6 +283,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         removeEventTap()
         if issInitialized { iss_destroy() }
+    }
+
+    // ISS predicts the post-switch space index because CGS lags the gesture.
+    // Any space change, including ones ISS did not make (Cmd-Tab, trackpad,
+    // app activation), makes live CGS data authoritative again.
+    @objc private func activeSpaceDidChange(_ notification: Notification) {
+        if issInitialized { iss_reset_predictions() }
     }
 
     fileprivate func handleDisplayReconfiguration() {
@@ -327,6 +350,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .idle:
             if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
                 enterListeningMode()
+                return nil
+            }
+            if let direction = Settings.resizeDirection(keyCode: keyCode, flags: event.flags) {
+                // Resize after returning from the tap so a slow application's
+                // AX round-trips cannot time the tap out.
+                DispatchQueue.main.async { [windowResizer] in
+                    windowResizer.resizeFocusedWindow(direction)
+                }
                 return nil
             }
             return Unmanaged.passUnretained(event)
@@ -397,7 +428,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch action {
         case .open(let path):
             if !WindowRouter.isApplicationBundle(path: path)
-                || !windowRouter.routeApplication(at: path, focusedDisplayUUID: focusedDisplayUUID) {
+                || !(windowRouter.routeApplication(at: path, focusedDisplayUUID: focusedDisplayUUID)
+                     || routeToOffSpaceWindow(ofApplicationAt: path)) {
                 NSWorkspace.shared.open(URL(fileURLWithPath: path))
             }
         case .switchSpace(let uuid, let index):
@@ -409,6 +441,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// For an application whose windows are all on hidden spaces, switches to
+    /// the frontmost one's space through ISS instead of letting macOS animate
+    /// there on activation.
+    private func routeToOffSpaceWindow(ofApplicationAt path: String) -> Bool {
+        guard issInitialized, let window = windowRouter.offSpaceWindow(forApplicationAt: path) else {
+            return false
+        }
+        return windowRouter.routeToOffSpaceWindow(window) { space in
+            space.displayUUID.withCString { iss_switch_to_space_on_display($0, space.index) }
+        }
+    }
+
     private func enterListeningMode() {
         focusedDisplayUUID = windowRouter.snapshotFocusedDisplayUUID()
         inputState = .waitingForBinding
@@ -417,7 +461,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func beginMonitorSelection(forApplicationAt path: String) {
         let windows = windowRouter.eligibleWindows(forApplicationAt: path)
         guard !windows.isEmpty else {
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            if !routeToOffSpaceWindow(ofApplicationAt: path) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            }
             resetToIdle()
             return
         }

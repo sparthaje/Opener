@@ -33,7 +33,8 @@ EOF
 mkdir -p build/Opener.iconset
 cp Opener/Assets.xcassets/AppIcon.appiconset/icon_*.png build/Opener.iconset/ 2>/dev/null || true
 cp Opener/Assets.xcassets/AppIcon.appiconset/Icon1024.png build/Opener.iconset/icon_512x512@2x.png 2>/dev/null || true
-iconutil -c icns build/Opener.iconset -o build/Opener.app/Contents/Resources/AppIcon.icns 2>/dev/null || true
+iconutil -c icns build/Opener.iconset -o build/Opener.app/Contents/Resources/AppIcon.icns \
+  || echo "warning: iconutil failed; Opener.app will have no icon" >&2
 
 # 4. Compile ISS C target -> static archive
 mkdir -p build/obj
@@ -55,7 +56,8 @@ swiftc -swift-version 5 -parse-as-library \
   -Lbuild/obj -lISS \
   -o build/Opener.app/Contents/MacOS/Opener \
   Opener/AppDelegate.swift Opener/MonitorConfig.swift \
-  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift
+  Opener/WindowRouting.swift Opener/MonitorSelectionOverlay.swift \
+  Opener/WindowResizing.swift
 
 # 6. Launch
 open build/Opener.app
