@@ -424,7 +424,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // All displays are numbered before app availability is considered, so
         // filtering never closes gaps in the labels.
-        let numberedDisplays = DisplayGeometry.numberedDisplays(focusedDisplayUUID: focusedDisplayUUID)
+        let numberedDisplays = DisplayGeometry.numberedDisplays()
         var windowsByNumber: [Int: RoutableWindow] = [:]
         for numberedDisplay in numberedDisplays where (1...9).contains(numberedDisplay.number) {
             if let frontmost = windows.first(where: {

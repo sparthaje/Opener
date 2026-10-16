@@ -72,7 +72,7 @@ Bind the exact value `monitor-select` to any key, then follow it with an applica
 
 For example, `⌘⇧2`, then `m`, then `b` displays centered number badges on all and only the monitors containing an eligible App B window. Pressing a displayed number raises App B's frontmost window on that monitor. Badges are keyboard-only and never take focus.
 
-Numbering is stable for the current invocation: the snapshotted focused monitor is `1`, and the remaining attached monitors are ordered left-to-right, then top-to-bottom, with display UUID as the final tie-breaker. All monitors are numbered before unavailable ones are hidden, so gaps remain. If App B exists on monitors 1 and 3 but not 2, the visible badges are `1` and `3`.
+Numbering is fixed for the current monitor arrangement: the macOS main display (the display configured as primary in System Settings) is always `1`, regardless of which monitor is focused. The remaining attached monitors are ordered left-to-right, then top-to-bottom, with display UUID as the final tie-breaker. All monitors are numbered before unavailable ones are hidden, so gaps remain. If App B exists on monitors 1 and 3 but not 2, the visible badges are `1` and `3`.
 
 Monitor selection supports the single number keys `1` through `9`, including their numpad equivalents. Escape, Backspace, an undisplayed number, or any other invalid key cancels selection. If the application has no eligible window, Opener dismisses selection and launches it normally. Disconnecting a display while badges are visible safely cancels the selection.
 

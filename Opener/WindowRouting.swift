@@ -96,13 +96,13 @@ enum DisplayGeometry {
     }
 
     static func numberedDisplays(
-        focusedDisplayUUID: String?,
-        displays: [DisplayDescriptor] = activeDisplays()
+        displays: [DisplayDescriptor] = activeDisplays(),
+        mainDisplayID: CGDirectDisplayID = CGMainDisplayID()
     ) -> [NumberedDisplay] {
         guard !displays.isEmpty else { return [] }
 
-        let focused = focusedDisplayUUID.flatMap { uuid in displays.first { $0.uuid == uuid } }
-        var remaining = displays.filter { $0.uuid != focused?.uuid }
+        let main = displays.first { $0.id == mainDisplayID }
+        var remaining = displays.filter { $0.id != main?.id }
         remaining.sort { lhs, rhs in
             if lhs.frame.minX != rhs.frame.minX { return lhs.frame.minX < rhs.frame.minX }
             if lhs.frame.minY != rhs.frame.minY { return lhs.frame.minY < rhs.frame.minY }
@@ -110,7 +110,7 @@ enum DisplayGeometry {
         }
 
         var ordered: [DisplayDescriptor] = []
-        if let focused = focused { ordered.append(focused) }
+        if let main = main { ordered.append(main) }
         ordered.append(contentsOf: remaining)
         return ordered.enumerated().map { NumberedDisplay(number: $0.offset + 1, display: $0.element) }
     }
@@ -146,7 +146,7 @@ final class WindowRouter {
             return display.uuid
         }
 
-        return DisplayGeometry.numberedDisplays(focusedDisplayUUID: nil, displays: displays).first?.display.uuid
+        return DisplayGeometry.numberedDisplays(displays: displays).first?.display.uuid
     }
 
     func eligibleWindows(forApplicationAt path: String) -> [RoutableWindow] {
