@@ -91,16 +91,29 @@ For example, with that binding, press the Opener hotkey followed by `q`.
 
 ---
 
-## Resizing windows
+## Fixed hotkeys
 
-`⌘⇧H` and `⌘⇧L` move the focused window's boundaries horizontally by 10% of its monitor's usable width (excluding a side-mounted Dock). They work at any time and don't need the Opener hotkey. Which boundary moves depends on where the window sits:
+These shortcuts are built in and can't be changed. They work at any time, without the Opener hotkey. They also take priority over the Opener hotkey, any binding, and the frontmost app's own shortcuts.
 
-- **Touching the right edge:** the left boundary moves. `⌘⇧H` grows the window leftward and `⌘⇧L` shrinks it toward the right edge.
-- **Touching the left edge:** the right boundary moves. `⌘⇧L` grows the window rightward and `⌘⇧H` shrinks it toward the left edge.
-- **Touching both edges:** the boundary opposite the key moves inward. `⌘⇧H` shrinks the window toward the left edge and `⌘⇧L` toward the right.
-- **Touching neither edge:** the window resizes in place by 5% on each side. `⌘⇧L` grows it and `⌘⇧H` shrinks it.
+| Keys | Action |
+| --- | --- |
+| `⌃⌥H` / `⌃⌥L` | Resize the focused window (see below) |
+| `⌘⇧H` / `⌘⇧L` | Instantly switch to the previous / next Mission Control space |
 
-A window within 8 points of an edge counts as touching it. Growing stops at the screen edge, and a window never shrinks below one step (10%) wide. Full-screen windows are left alone.
+### Switching to the adjacent space
+
+`⌘⇧H` and `⌘⇧L` move one space left or right on the monitor under the pointer, with no slide animation. They stop at the first and last space instead of wrapping around. Holding a key down moves only one space.
+
+### Resizing windows
+
+`⌃⌥H` and `⌃⌥L` resize the focused window horizontally on a grid of tenths of its monitor's usable width (0.1, 0.2, … 1.0), excluding a side-mounted Dock. Each press snaps to the next grid width in the direction of the change. For example, a window 0.25 wide grows to 0.4 (not 0.35) and shrinks to 0.1. Which boundary moves depends on where the window sits:
+
+- **Touching the right edge:** the left boundary moves. `⌃⌥H` grows the window leftward and `⌃⌥L` shrinks it toward the right edge.
+- **Touching the left edge:** the right boundary moves. `⌃⌥L` grows the window rightward and `⌃⌥H` shrinks it toward the left edge.
+- **Touching both edges:** the boundary opposite the key moves inward. `⌃⌥H` shrinks the window toward the left edge and `⌃⌥L` toward the right.
+- **Touching neither edge:** the window resizes around its center. `⌃⌥L` grows it and `⌃⌥H` shrinks it. If it would extend past a screen edge, it shifts back onto the screen.
+
+A window within 8 points of an edge counts as touching it, and that edge snaps exactly to the screen edge. Widths stay between 0.1 and 1.0. Full-screen windows are left alone.
 
 ---
 

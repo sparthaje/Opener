@@ -81,7 +81,8 @@ Save it as `build.sh`, `chmod +x build.sh`, run `./build.sh`.
 - `Opener/MonitorConfig.swift` — display-UUID + monitor-config helpers.
 - `Opener/WindowRouting.swift` — visible-window discovery, display assignment, exact AX activation, and instant (ISS) routing to windows on hidden spaces.
 - `Opener/MonitorSelectionOverlay.swift` — non-activating numbered monitor badges.
-- `Opener/WindowResizing.swift` — ⌘⇧H / ⌘⇧L edge-aware horizontal resizing of the focused window.
+- `Opener/WindowResizing.swift` — ⌃⌥H / ⌃⌥L edge-aware horizontal resizing of the focused window on a 10%-of-monitor grid.
+- Fixed hotkeys (`Settings.fixedHotkeys` in `AppDelegate.swift`) are checked before the leader-key state machine so they always win: ⌃⌥H/L resize, ⌘⇧H/L switch to the previous/next space via `iss_switch` (no wrap).
 - `Opener/ISS/` — vendored from `example/InstantSpaceSwitcher`. Provides instant Mission Control space switching by posting Dock-swipe `CGEvent`s.
   - `ISS.c`, `include/ISS.h` — C engine. Public Swift-callable surface includes `iss_init`, `iss_destroy`, `iss_switch_to_space_on_display(uuid, index)`.
   - `Opener-Bridging-Header.h` — Swift bridging import.

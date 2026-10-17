@@ -11,6 +11,13 @@ import Carbon
 
 // MARK: - Settings
 
+/// Hard-wired shortcuts that are not configurable and take precedence over
+/// the leader hotkey and every binding.
+enum FixedHotkey {
+    case resize(ResizeDirection)
+    case adjacentSpace(ISSDirection)
+}
+
 enum Action {
     case open(path: String)
     case switchSpace(displayUUID: String, index: UInt32)
@@ -56,9 +63,11 @@ struct Settings {
         "option-command": [.maskAlternate, .maskCommand],
     ]
 
-    // Fixed window-resize hotkeys: ⌘⇧H and ⌘⇧L.
-    private static let resizeModifiers: CGEventFlags = [.maskCommand, .maskShift]
-    private static let resizeKeyCodes: [UInt16: ResizeDirection] = [4: .left, 37: .right]
+    // ⌃⌥H / ⌃⌥L resize the focused window; ⌘⇧H / ⌘⇧L move one space left/right.
+    private static let fixedHotkeys: [CGEventFlags.RawValue: [UInt16: FixedHotkey]] = [
+        CGEventFlags([.maskControl, .maskAlternate]).rawValue: [4: .resize(.left), 37: .resize(.right)],
+        CGEventFlags([.maskCommand, .maskShift]).rawValue: [4: .adjacentSpace(ISSDirectionLeft), 37: .adjacentSpace(ISSDirectionRight)],
+    ]
 
     let modifierFlags: CGEventFlags
     let hotkeyKeyCode: UInt16
@@ -69,9 +78,8 @@ struct Settings {
         return keyCode == hotkeyKeyCode && flags.intersection(Self.relevantModifiers) == modifierFlags
     }
 
-    static func resizeDirection(keyCode: UInt16, flags: CGEventFlags) -> ResizeDirection? {
-        guard flags.intersection(relevantModifiers) == resizeModifiers else { return nil }
-        return resizeKeyCodes[keyCode]
+    static func fixedHotkey(keyCode: UInt16, flags: CGEventFlags) -> FixedHotkey? {
+        fixedHotkeys[flags.intersection(relevantModifiers).rawValue]?[keyCode]
     }
 
     func activeBindings(forConfigID configID: String) -> [String: Action] {
@@ -338,7 +346,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     fileprivate func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
@@ -346,18 +354,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
+        // Fixed hotkeys win in every state, including over a leader hotkey or
+        // binding that uses the same key, and are never passed to applications.
+        if let hotkey = Settings.fixedHotkey(keyCode: keyCode, flags: event.flags) {
+            resetToIdle()
+            perform(hotkey: hotkey, isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
+            return nil
+        }
+
         switch inputState {
         case .idle:
             if settings.matchesHotkey(keyCode: keyCode, flags: event.flags) {
                 enterListeningMode()
-                return nil
-            }
-            if let direction = Settings.resizeDirection(keyCode: keyCode, flags: event.flags) {
-                // Resize after returning from the tap so a slow application's
-                // AX round-trips cannot time the tap out.
-                DispatchQueue.main.async { [windowResizer] in
-                    windowResizer.resizeFocusedWindow(direction)
-                }
                 return nil
             }
             return Unmanaged.passUnretained(event)
@@ -421,6 +429,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // A hidden number, zero, or any other key is a cancellation.
             resetToIdle()
             return nil
+        }
+    }
+
+    private func perform(hotkey: FixedHotkey, isRepeat: Bool) {
+        switch hotkey {
+        case .resize(let direction):
+            // Resize after returning from the tap so a slow application's
+            // AX round-trips cannot time the tap out.
+            DispatchQueue.main.async { [windowResizer] in
+                windowResizer.resizeFocusedWindow(direction)
+            }
+        case .adjacentSpace(let direction):
+            // Holding the key would race through every space; one press, one space.
+            // iss_switch acts on the display under the cursor and stops at the
+            // first and last space instead of wrapping.
+            guard issInitialized, !isRepeat else { return }
+            _ = iss_switch(direction)
         }
     }
 

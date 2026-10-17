@@ -6,15 +6,23 @@ enum ResizeDirection {
     case right
 }
 
-/// Horizontal nudging of the focused window. The boundary that moves depends on
-/// where the window sits on its monitor:
-/// - docked to the right edge: the left boundary moves,
-/// - docked to the left edge: the right boundary moves,
+/// Horizontal resizing of the focused window on a grid of tenths of its
+/// monitor's usable width. Each press moves to the next grid width in the
+/// direction of the change, so an off-grid window lands on the grid: from
+/// 0.25, growing gives 0.4 and shrinking gives 0.1. Widths stay within
+/// 0.1...1.0. The boundary that moves depends on where the window sits:
+/// - docked to the right edge: the left boundary moves (`.left` grows),
+/// - docked to the left edge: the right boundary moves (`.right` grows),
 /// - docked to both edges: the boundary opposite the key moves inward,
-/// - floating: both boundaries move by half a step (`.right` grows, `.left` shrinks).
+/// - floating: it resizes about its center (`.right` grows, `.left` shrinks).
 final class WindowResizer {
-    // Each press moves a boundary by this fraction of the monitor's usable width.
+    // Grid spacing as a fraction of the monitor's usable width.
     private static let stepFraction: CGFloat = 0.10
+    private static let gridSteps = 10
+    // Widths within this fraction of a step of a grid line count as on it, so
+    // apps that round their width (terminals sizing to whole cells) still step
+    // to the next line instead of re-snapping to the current one.
+    private static let gridTolerance: CGFloat = 0.1
     // Apps and tiling tools often leave a small gap at the screen edge, so a
     // window this close to an edge still counts as docked to it.
     private static let edgeTolerance: CGFloat = 8
@@ -45,44 +53,43 @@ final class WindowResizer {
         within bounds: ClosedRange<CGFloat>,
         direction: ResizeDirection
     ) -> (CGRect, Anchor) {
-        let step = (bounds.upperBound - bounds.lowerBound) * stepFraction
-        let minimumWidth = step
+        let boundsWidth = bounds.upperBound - bounds.lowerBound
+        let step = boundsWidth * stepFraction
         let touchesLeft = frame.minX <= bounds.lowerBound + edgeTolerance
         let touchesRight = frame.maxX >= bounds.upperBound - edgeTolerance
 
-        var minX = frame.minX
-        var maxX = frame.maxX
+        let grows: Bool
         let anchor: Anchor
-
         switch (touchesLeft, touchesRight, direction) {
-        case (true, true, .left), (true, false, .left):
-            maxX -= step
-            anchor = .minX
-        case (true, false, .right):
-            maxX = min(maxX + step, bounds.upperBound)
-            anchor = .minX
-        case (true, true, .right), (false, true, .right):
-            minX += step
-            anchor = .maxX
-        case (false, true, .left):
-            minX = max(minX - step, bounds.lowerBound)
-            anchor = .maxX
-        case (false, false, .right):
-            minX = max(minX - step / 2, bounds.lowerBound)
-            maxX = min(maxX + step / 2, bounds.upperBound)
-            anchor = .center
-        case (false, false, .left):
-            minX += step / 2
-            maxX -= step / 2
-            anchor = .center
+        case (true, true, .left):
+            (grows, anchor) = (false, .minX)
+        case (true, true, .right):
+            (grows, anchor) = (false, .maxX)
+        case (true, false, _):
+            (grows, anchor) = (direction == .right, .minX)
+        case (false, true, _):
+            (grows, anchor) = (direction == .left, .maxX)
+        case (false, false, _):
+            (grows, anchor) = (direction == .right, .center)
         }
 
-        if maxX - minX < minimumWidth {
-            // Shrinking below the floor is a no-op rather than a partial step,
-            // so repeated presses settle instead of jittering.
-            return (frame, anchor)
+        let steps = frame.width / step
+        let targetSteps = grows
+            ? Int((steps + 1 - gridTolerance).rounded(.up))
+            : Int((steps - 1 + gridTolerance).rounded(.down))
+        let width = CGFloat(min(max(targetSteps, 1), gridSteps)) * step
+
+        // Docked edges snap to the screen edge so grid widths are exact.
+        let minX: CGFloat
+        switch anchor {
+        case .minX:
+            minX = bounds.lowerBound
+        case .maxX:
+            minX = bounds.upperBound - width
+        case .center:
+            minX = min(max(frame.midX - width / 2, bounds.lowerBound), bounds.upperBound - width)
         }
-        return (CGRect(x: minX, y: frame.minY, width: maxX - minX, height: frame.height), anchor)
+        return (CGRect(x: minX, y: frame.minY, width: width, height: frame.height), anchor)
     }
 
     private func apply(_ target: CGRect, anchoredAt anchor: Anchor, from frame: CGRect, to window: AXUIElement) {
